@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WAG 6.1 | Demo API</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 16px/1.55 system-ui, sans-serif; color: #12342d; background: #f2f7f4; }
+    header { background: #123d33; color: #fff; }
+    header div, main { max-width: 1070px; margin: auto; padding: 24px; }
+    h1, h2 { margin: 0 0 10px; }
+    section { background: #fff; border: 1px solid #d1e1d8; border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+    nav, form { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+    button, input, select { font: inherit; border: 1px solid #74998b; border-radius: 6px; padding: 7px 10px; }
+    button { color: #fff; background: #175b48; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: wait; }
+    label { display: grid; gap: 4px; }
+    .scroll { overflow: auto; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #e2ebe5; }
+    th { background: #edf5ef; }
+    details { margin-top: 12px; }
+    pre { overflow: auto; background: #ecf4ef; padding: 12px; max-height: 400px; }
+  </style>
+</head>
+<body>
+  <header><div><h1>WAG </h1>Supply Chain & Warehouse Logistics Network</div></header>
+  <main>
+    <section>
+      <h2>Tra cứu</h2>
+      <nav aria-label="Truy vấn">
+        <button data-path="/api/health">Kết nối</button>
+        <button data-path="/api/warehouses">Danh sách kho</button>
+        <button data-path="/api/inventory">Tồn kho</button>
+        <button data-path="/api/alerts">Cảnh báo</button>
+        <button data-path="/api/receipts">Lịch sử nhận hàng</button>
+      </nav>
+    </section>
+    <section>
+      <h2>Nhận hàng</h2>
+      <form id="receiving">
+        <label>Dòng hàng đã đến<select id="shipment" required></select></label>
+        <label>Mã biến động<input id="movement" required maxlength="15" pattern="[A-Za-z0-9_\-]+" value="MVPHASE4"></label>
+        <button id="receive" type="submit">Xác nhận nhận đủ</button>
+      </form>
+      <p id="pending-status" role="status"></p>
+    </section>
+    <section>
+      <h2>Kết quả API</h2>
+      <p id="status" role="status"></p>
+      <div class="scroll"><table id="result"></table></div>
+      <details><summary>Xem JSON</summary><pre id="json"></pre></details>
+    </section>
+  </main>
+  <script>
+    const statusLine = document.querySelector('#status');
+    const result = document.querySelector('#result');
+    const jsonView = document.querySelector('#json');
+    const shipment = document.querySelector('#shipment');
+    const receive = document.querySelector('#receive');
+    const pendingStatus = document.querySelector('#pending-status');
+    let requestNumber = 0;
+
+    async function request(path, options) {
+      const response = await fetch(path, options);
+      return { response, body: await response.json() };
+    }
+
+    function display(path, method, response, body) {
+      result.replaceChildren();
+      const labels = {
+        database_error: 'Kiểm tra MySQL và thông tin đăng nhập trong Eclipse.',
+        receipt_or_movement_id_already_exists: 'Dòng hàng đã được nhận hoặc mã biến động đã tồn tại.',
+        shipment_not_arrived_or_inventory_record_missing: 'Chuyến chưa đến hoặc thiếu bản ghi tồn kho.'
+      };
+      const detail = response.ok && Array.isArray(body.data)
+        ? body.data.length + ' dòng kết quả' : (labels[body.error] ?? body.error ?? 'Thành công');
+      statusLine.textContent = method + ' ' + path + ' · HTTP ' + response.status + ' · ' + detail;
+      jsonView.textContent = JSON.stringify(body, null, 2);
+      if (!body.data?.length) return;
+      const keys = Object.keys(body.data[0]);
+      const heading = result.createTHead().insertRow();
+      for (const key of keys) {
+        const th = document.createElement('th');
+        th.scope = 'col';
+        th.textContent = key;
+        heading.append(th);
+      }
+      const tableBody = result.createTBody();
+      for (const data of body.data) {
+        const row = tableBody.insertRow();
+        for (const key of keys) row.insertCell().textContent = data[key] ?? '';
+      }
+    }
+
+    async function run(path, options) {
+      const current = ++requestNumber;
+      statusLine.textContent = 'Đang gửi yêu cầu…';
+      try {
+        const result = await request(path, options);
+        if (current === requestNumber) display(path, options?.method ?? 'GET', result.response, result.body);
+      } catch {
+        if (current === requestNumber) statusLine.textContent = 'Không đọc được phản hồi. Kiểm tra Console trong Eclipse.';
+      }
+    }
+
+    async function loadPending() {
+      shipment.replaceChildren();
+      receive.disabled = true;
+      try {
+        const { response, body } = await request('/api/pending-receipts');
+        if (!response.ok) throw new Error();
+        for (const row of body.data) {
+          const label = [row.shipmentItemId, row.trackingNumber, row.product, row.quantity].join(' / ');
+          shipment.add(new Option(label, row.shipmentItemId));
+        }
+        receive.disabled = body.data.length === 0;
+        pendingStatus.textContent = body.data.length ? '' : 'Không còn dòng hàng chờ nhận.';
+      } catch {
+        pendingStatus.textContent = 'Không tải được danh sách hàng chờ nhận.';
+      }
+    }
+
+    document.querySelectorAll('[data-path]').forEach(button => {
+      button.onclick = () => run(button.dataset.path);
+    });
+    document.querySelector('#receiving').onsubmit = async event => {
+      event.preventDefault();
+      receive.disabled = true;
+      await run('/api/receipts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          movementId: document.querySelector('#movement').value,
+          shipmentItemId: shipment.value
+        })
+      });
+      await loadPending();
+    };
+    run('/api/health');
+    loadPending();
+  </script>
+</body>
+</html>
