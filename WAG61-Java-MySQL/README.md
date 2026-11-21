@@ -1,6 +1,6 @@
 # WAG Java API và MySQL
 
-Project dùng thiết kế trong **WAG-6-1.docx**. Thư mục **sql** chứa script MySQL, **src/wag/api/WagApi.java** là API Java, và **src/wag/api/index.html** là trang demo. Tệp Connector/J nằm sẵn trong **lib**. Project dùng **JDK 17 trở lên** và chạy được từ Eclipse.
+Project dùng thiết kế trong **WAG.docx**. Thư mục **sql** chứa script MySQL, **src/wag/api/WagApi.java** là API Java, và **src/wag/api/index.html** là trang demo. Tệp Connector/J nằm sẵn trong **lib**. Project dùng **JDK 17 trở lên** và chạy được từ Eclipse.
 
 ## 1. Nạp MySQL trong Workbench
 
